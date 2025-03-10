@@ -6,12 +6,13 @@ import re
 import os
 import matplotlib.pyplot as plt
 import plotly.express as px
-
-output_dir = os.path.expanduser("~\Desktop")
+from io import BytesIO
+import tempfile
  
-# Gemini API key
+# API key for Google Gemini
 keys_file = st.secrets["keys_file"]
 genai.configure(api_key=keys_file)
+
 def extract_code_from_file(uploaded_file):
     return uploaded_file.read().decode("utf-8")
  
@@ -33,14 +34,14 @@ def analyze_code_with_gemini_ai(code_text, language, standards=None):
                 ```
             Mitigation walkthrough:
             <output>
-       
+        
             Improved code:
                 ```
                 <output>
                 ```
-       
+        
         give the sub headings in bold for the response
-       
+        
         Focus on clarity and detail to ensure that your analysis is thorough and understandable.
         Code to analyze:
         {code_text}
@@ -117,23 +118,17 @@ def plot_score_chart(scores):
         plt.xlabel("Score")
         plt.ylabel("Metric")
         plt.tight_layout()  
-        file_path = os.path.join(output_dir, "score_chart.png")
-        print(file_path)
-        # Save the plot to the specified file path
-        plt.savefig(file_path,dpi=300)
-        return file_path
-    except:
+
+        # Save the plot to a BytesIO object
+        img_bytes = BytesIO()
+        plt.savefig(img_bytes, format="png", dpi=300)
+        img_bytes.seek(0)  # Reset the pointer to the beginning
+        return img_bytes
+    except Exception as e:
+        print(f"Error generating score chart: {e}")
         return None
  
- 
-# Mapping file extensions to language and standards
-language_map = {
-    'py': {'language': 'Python', 'standards': 'PEP 8'},
-    'java': {'language': 'Java', 'standards': 'Java Code Conventions'},
-    'js': {'language': 'JavaScript', 'standards': 'Airbnb JavaScript Style Guide'}
-}
- 
-def generate_pdf_report(analysis_result, analysis_table, score_chart_path):
+def generate_pdf_report(analysis_result, analysis_table, score_chart_bytes):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -167,11 +162,18 @@ def generate_pdf_report(analysis_result, analysis_table, score_chart_path):
             pdf.cell(60, 10, str(row['Metric']), 1, 0, "L")
             pdf.cell(40, 10, str(row['Score']), 1, 1, "L")
  
-    # Add Score Chart (from the temporary file)
-    if score_chart_path is not None:
-        pdf.ln(10)  # Add space before image
-        pdf.image(score_chart_path, x=10, w=180)  # Only add once here
-        pdf.ln(10)  # Add space below the image to avoid overlap with text
+        # Add Score Chart (from the image BytesIO object)
+        if score_chart_bytes is not None:
+            pdf.ln(10)  # Add space before image
+
+            # Save BytesIO image to a temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_image_file:
+                temp_image_file.write(score_chart_bytes.read())  # Write the bytes to the temp file
+                temp_image_file.close()  # Close the file before passing to FPDF
+
+                pdf.image(temp_image_file.name, x=10, w=180)  # Add the image from the temporary file
+                pdf.ln(10)  # Add space below the image to avoid overlap with text
+
  
     pdf.ln(10)  # Add space before the analysis text
     lines = analysis_result.split("\n")
@@ -262,9 +264,14 @@ def security_chatbot(question, analysis_result, analysis_scores):
     st.session_state.qa.append({"question": question, "answer": answer})
  
     return answer
- 
- 
- 
+
+# Mapping file extensions to language and standards
+language_map = {
+    'py': {'language': 'Python', 'standards': 'PEP 8'},
+    'java': {'language': 'Java', 'standards': 'Java Code Conventions'},
+    'js': {'language': 'JavaScript', 'standards': 'Airbnb JavaScript Style Guide'}
+}
+
 def main():
     st.set_page_config(page_title="Code Security Analyzer", layout="wide")
  
@@ -320,10 +327,10 @@ def main():
                 st.write(st.session_state.analysis_result)
                 st.subheader("Score Breakdown")
                 st.write(st.session_state.table_data)
-                score_chart_path = plot_score_chart(st.session_state.scores)
+                score_chart_bytes = plot_score_chart(st.session_state.scores)
  
                 # Generate PDF report only if the analysis is done
-                pdf_file = generate_pdf_report(st.session_state.analysis_result, st.session_state.table_data, score_chart_path)
+                pdf_file = generate_pdf_report(st.session_state.analysis_result, st.session_state.table_data, score_chart_bytes)
  
                 st.sidebar.download_button(
                     label="Download Analysis Report",
@@ -335,7 +342,7 @@ def main():
         else:
             st.sidebar.warning("Unsupported file type.")
  
-    # Security Chatbot Interaction - Only triggered if question is asked
+    # Security Chatbot Interaction 
     if uploaded_file is not None and 'analysis_done' in st.session_state and st.session_state.analysis_done:
         question = st.sidebar.text_input("🤖 Ask Security Chatbot about the analysis:")
  
