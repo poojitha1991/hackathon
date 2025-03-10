@@ -6,39 +6,12 @@ import re
 import os
 import matplotlib.pyplot as plt
 import plotly.express as px
-from cryptography.fernet import Fernet 
+
 output_dir = os.path.expanduser("~\Desktop")
  
-# Function to load the encryption key and decrypt the API key
-def load_api_key():
-    try:
-        # Step 1: Load the encryption key
-        with open('api.key', 'rb') as key_file:
-            key = key_file.read()
- 
-        # Step 2: Initialize the cipher with the key
-        cipher = Fernet(key)
- 
-        # Step 3: Load the encrypted API key
-        with open('encrypted_api_key.txt', 'rb') as file:
-            encrypted_api_key = file.read()
- 
-        # Step 4: Decrypt the API key
-        api_key = cipher.decrypt(encrypted_api_key).decode()
- 
-        return api_key
- 
-    except Exception as e:
-        print(f"Error loading or decrypting API key: {e}")
-        return None
- 
-# Initialize the Gemini API with the decrypted API key
-api_key = load_api_key()
-if api_key:
-    genai.configure(api_key=api_key)
-else:
-    print("Failed to load the API key. Please check the encryption files.")
- 
+# Gemini API key
+keys_file = st.secrets["keys_file"]
+genai.configure(api_key=keys_file)
 def extract_code_from_file(uploaded_file):
     return uploaded_file.read().decode("utf-8")
  
